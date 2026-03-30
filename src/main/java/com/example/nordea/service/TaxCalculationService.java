@@ -12,6 +12,9 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 
 @Service
 @RequiredArgsConstructor
@@ -19,10 +22,19 @@ public class TaxCalculationService {
     private final TaxStrategyRegistry registry;
     private final AccountRepository accountRepository;
     private final TaxRuleRepository taxRuleRepository;
+    private final Executor executor;
 
     public TaxResult calculateTax(UUID accountId, int taxYear) {
         // 1. Load account or throw AccountNotFoundException
-        AccountEntity account = accountRepository.findById(accountId).orElseThrow(() -> new AccountNotFoundException(accountId));
+        CompletableFuture<AccountEntity> accountFuture = CompletableFuture
+                .supplyAsync(() -> accountRepository.findById(accountId).orElseThrow(() -> new AccountNotFoundException(accountId)),
+                        executor);
+        AccountEntity account;
+        try {
+            account = accountFuture.get();
+        } catch (ExecutionException | InterruptedException e) {
+            throw new RuntimeException(e);
+        }
 
         // 2. Build TaxInput from account state
         BigDecimal totalInvested = account.getInvestmentEntities()
