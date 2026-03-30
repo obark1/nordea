@@ -1,0 +1,1 @@
+TRUNCATE TABLE investments, outbox_events, audit_log, tax_rules, accounts RESTART IDENTITY CASCADE;
