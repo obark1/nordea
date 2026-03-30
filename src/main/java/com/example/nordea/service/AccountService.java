@@ -9,14 +9,12 @@ import com.example.nordea.entity.InvestmentEntity;
 import com.example.nordea.entity.Money;
 import com.example.nordea.exception.AccountNotFoundException;
 import com.example.nordea.exception.InsufficientFundsException;
-import com.example.nordea.model.AccountDomainEvent;
-import com.example.nordea.model.AccountStatus;
-import com.example.nordea.model.Currency;
-import com.example.nordea.model.TaxResult;
+import com.example.nordea.model.*;
 import com.example.nordea.repository.AccountRepository;
 import com.example.nordea.util.Utils;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.NonNull;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
@@ -34,6 +32,7 @@ public class AccountService {
     private final AccountRepository accountRepository;
     private final DomainEventPublisher domainEventPublisher;
     private final ObjectMapper objectMapper;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     @Transactional
     public AccountResponse createAccount(final CreateAccountRequest account) {
@@ -46,15 +45,15 @@ public class AccountService {
         newAccount.setAccountStatus(AccountStatus.ACTIVE);
         newAccount = accountRepository.saveAndFlush(newAccount);
 
-        domainEventPublisher.publish(
+        applicationEventPublisher.publishEvent(new AccountDomainEventWrapper(
                 new AccountDomainEvent(
                         UUID.randomUUID(),
                         newAccount.getId(),
                         "ACCOUNT_CREATED",
                         objectMapper.writeValueAsString(newAccount),
                         Instant.now()
-                    ),
-                TOPIC_ACCOUNT_EVENTS);
+                ),
+                TOPIC_ACCOUNT_EVENTS));
 
         return toResponse(newAccount);
     }
@@ -67,6 +66,7 @@ public class AccountService {
                 account.getBalance().getCurrency(), account.getCreatedAt(), account.getVersion());
     }
 
+    @Transactional
     public void allocateInvestments(final UUID accountId, AllocateInvestmentRequest investmentRequest) {
         AccountEntity account = accountRepository.findById(accountId).orElseThrow(() -> new AccountNotFoundException(accountId));
         Currency currency = investmentRequest.getCurrency();
@@ -86,7 +86,7 @@ public class AccountService {
 
         account = accountRepository.saveAndFlush(account);
 
-        domainEventPublisher.publish(
+        applicationEventPublisher.publishEvent(new AccountDomainEventWrapper(
                 new AccountDomainEvent(
                         UUID.randomUUID(),
                         account.getId(),
@@ -94,7 +94,7 @@ public class AccountService {
                         objectMapper.writeValueAsString(account),
                         Instant.now()
                 ),
-                TOPIC_ACCOUNT_EVENTS);
+                TOPIC_ACCOUNT_EVENTS));
     }
 
     public TaxSummaryResponse getTaxSummary(final UUID accountId, final Integer taxYear) {
